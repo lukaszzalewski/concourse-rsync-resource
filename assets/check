@@ -36,10 +36,6 @@ SSH_ASKPASS=/opt/resource/askpass.sh DISPLAY= ssh-add ~/.ssh/server_key  1>&2  >
 REFS=''
 DIR=${BASE_DIR##*/}
 echo $DIR 1>&2
-REFS="{ \"ref\": \"$(ssh -i ~/.ssh/server_key \"find $BASE_DIR -type f -exec stat -c "%Y" {} \; | sort -n | tail -1\")\" }"
 
-echo "Determined refs to be: $REFS"  1>&2
-
-OUTPUT_STRING="[ $REFS ]"
-echo $OUTPUT_STRING
+echo "[{ \"ref\": \"$(ssh -i ~/.ssh/server_key \"find $BASE_DIR -type f -exec stat -c "%Y" {} \; | sort -n | tail -1\")\" }]"
 exit 0
