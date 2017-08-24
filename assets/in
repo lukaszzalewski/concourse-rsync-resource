@@ -25,7 +25,7 @@ DISABLE_VERSION_PATH=$?
 # imitating docker resource: provide a way to do a one-way sync.
 #    This should really only be used when the output will not be consumed as a
 #    resource later in a given job.
-skip_download="$(jq -r '.params.skip_download // false' < $payload)"
+skip_download="$(jq -r '.params.skip_download // false' < $SCRIPT_INPUT)"
 
 if [ "$skip_download" = "false" ]; then
     ## check if port is set in the configuration and
@@ -83,5 +83,5 @@ if [ "$skip_download" = "false" ]; then
     fi
 else
     # skipped get due to skip_download=True
-    echo "{ \"version\": \"\" }"
+    echo "{ \"version\": { \"ref\": \"\" } }"
 fi
