@@ -28,6 +28,18 @@ RSYNC_OPTS_ARR=$(jq -r '.params.rsync_opts // ""' < $SCRIPT_INPUT)
 jq -re '.source.disable_version_path' < $SCRIPT_INPUT >/dev/null
 DISABLE_VERSION_PATH=$?
 
+jq -re '.source.version_ref' < $SCRIPT_INPUT >/dev/null
+
+if [ $? -eq 1 ]; then
+    # next best thing is timestamp of latest file
+    echo "No version ref found in parameters; using latest timestamp" 1>&2
+    VERSION_REF=$(find "$SRC_DIR/$SYNC_DIR" -type f -exec stat -c "%Y" {} \; | sort -n | tail -1)
+else
+    VERSION_REF=$(jq -re '.source.version_ref // ""' < $SCRIPT_INPUT)
+    echo "Found version_ref in params.  Value: ${VERSION_REF}" 1>&2
+fi
+
+
 if [ -z "$RSYNC_OPTS_ARR" ]
 then
     RSYNC_OPTS="-Pav"
@@ -61,9 +73,6 @@ chmod -R 600 ~/.ssh
 eval $(ssh-agent) 1>&2 2>/dev/null
 SSH_ASKPASS=/opt/resource/askpass.sh DISPLAY= ssh-add ~/.ssh/server_key 1>&2 2>/dev/null
 
-TIMESTAMP=$(find "$SRC_DIR/$SYNC_DIR" -type f -exec stat -c "%Y" {} \; | sort -n | tail -1)
-echo "DEBUG: Timestamp of latest modified file is $TIMESTAMP" 1>&2
-
 # Create the new directory for this build
 if [ $DISABLE_VERSION_PATH -eq 0 ]
 then
@@ -89,7 +98,7 @@ do
     if [ $? -eq 0 ]; then
         if [ $REPORTED_VERSION -eq 0 ]
         then
-            OUTPUT_STRING="{ \"version\": { \"ref\": \"$TIMESTAMP\"} }"
+            OUTPUT_STRING="{ \"version\": { \"ref\": \"$VERSION_REF\"} }"
             echo "DEBUG: outputting $OUTPUT_STRING to concourse" 1>&2
             echo $OUTPUT_STRING
             REPORTED_VERSION=1
