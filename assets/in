@@ -10,6 +10,9 @@ echo $ATC_EXTERNAL_URL 1>&2
 
 PLATFORM=`uname`
 
+MAX_RETRIES=10
+SLEEP_TIME=10
+
 SCRIPT_INPUT='/tmp/input'
 cat > $SCRIPT_INPUT <&0 # STDIN params
 
@@ -67,14 +70,38 @@ if [ "$skip_download" = "false" ]; then
         RSYNC_CMD="rsync -Pav -e 'ssh -i ~/.ssh/server_key -p $PORT' $USER@$SERVER:$SRC_DIR/* $DEST_DIR"
         echo $RSYNC_CMD  1>&2
         eval $RSYNC_CMD  1>&2
+
         if [ $? -eq 0 ]; then
             TIMESTAMP=$(find $DEST_DIR -type f -exec stat -c "%Y" {} \; | sort -n | tail -1)
             OUTPUT_STRING="{ \"version\": { \"ref\": \"$TIMESTAMP\"} }"
             echo $OUTPUT_STRING
             exit 0
-        else
-        echo "Failed to rsync $SRC_DIR to $DEST_DIR" 1>&2
-        exit 1
+        fi
+
+        i=0
+        while [ $? -ne 0 -a $i -lt $MAX_RETRIES ]
+        do
+            if [ $? -eq 0 ]; then
+                TIMESTAMP=$(find $DEST_DIR -type f -exec stat -c "%Y" {} \; | sort -n | tail -1)
+                OUTPUT_STRING="{ \"version\": { \"ref\": \"$TIMESTAMP\"} }"
+                echo $OUTPUT_STRING
+                exit 0
+            else
+                echo "Command failed - retrying in $SLEEP_TIME..."
+                sleep $SLEEP_TIME
+                i=$(($i+1))
+                eval $COMMAND
+
+                echo $RSYNC_CMD  1>&2
+                eval $RSYNC_CMD  1>&2
+            fi
+
+        done
+
+        if [ $i -eq $MAX_RETRIES ]
+        then
+            echo "Max retries reached"
+            exit 1
         fi
     else
         echo "Version $VERSION no longer available in $BASE_DIR" 1>&2
