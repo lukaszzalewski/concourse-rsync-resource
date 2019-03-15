@@ -21,6 +21,8 @@ PORT=$(jq -r '.source.port // ""' < $SCRIPT_INPUT)
 BASE_DIR=$(jq -r '.source.base_dir // ""' < $SCRIPT_INPUT)
 USER=$(jq -r '.source.user // ""' < $SCRIPT_INPUT)
 VERSION=$(jq -r '.version.ref // ""' < $SCRIPT_INPUT)
+RSYNC_OPTS_ARR=$(jq -r '.params.rsync_opts // ""' < $SCRIPT_INPUT)
+
 jq -re '.source.disable_version_path' < $SCRIPT_INPUT >/dev/null
 # a little tricky: 0 is the status code that says that we found the entry.  It's inverted logic.
 DISABLE_VERSION_PATH=$?
@@ -35,6 +37,13 @@ if [ "$skip_download" = "false" ]; then
     ## use default SSH port number 22 otherwise
     if [ -z "$PORT" ]; then
         PORT=22
+    fi
+
+    if [ -z "$RSYNC_OPTS_ARR" ]
+    then
+        RSYNC_OPTS="-Pav"
+    else
+        RSYNC_OPTS=$(jq -r 'join(" ")' <<< $RSYNC_OPTS_ARR)
     fi
 
     echo $SCRIPT_INPUT 1>&2
@@ -67,7 +76,7 @@ if [ "$skip_download" = "false" ]; then
     exit 1
     else
     if (ssh -t -i ~/.ssh/server_key -p $PORT $USER@$SERVER '[ -d $SRC_DIR ]' ); then
-        RSYNC_CMD="rsync -Pav -e 'ssh -i ~/.ssh/server_key -p $PORT' $USER@$SERVER:$SRC_DIR/* $DEST_DIR"
+        RSYNC_CMD="rsync $RSYNC_OPTS -e 'ssh -i ~/.ssh/server_key -p $PORT' $USER@$SERVER:$SRC_DIR/* $DEST_DIR"
         echo $RSYNC_CMD  1>&2
         eval $RSYNC_CMD  1>&2
 
