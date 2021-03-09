@@ -2,6 +2,14 @@
 
 set -e -x
 
+function stop_ssh_agent()
+{
+    [ ! -z "$SSH_AGENT_PID" ] && kill $SSH_AGENT_PID
+}
+
+trap stop_ssh_agent EXIT
+trap stop_ssh_agent SIGINT SIGTERM
+
 SCRIPT_INPUT='/tmp/input'
 cat > $SCRIPT_INPUT <&0 # STDIN params
 
@@ -44,7 +52,7 @@ fi
 
 DIR=${SRC_DIR##*/}
 echo $DIR 1>&2
-REFS=$(ssh -i ~/.ssh/server_key -p $PORT $USER@$SERVER "find $SRC_DIR -type f -exec stat -c '%Y' {} \; | sort -n | tail -1")
+REFS=$(ssh -i ~/.ssh/server_key -p $PORT $USER@$SERVER "find $SRC_DIR -type f -printf '%T@\n' | cut -d. -f1 | sort -n | tail -1")
 if [ "$?" -eq "0" ]
 then
     REFS="[{ \"ref\": \"$REFS\" }]"
