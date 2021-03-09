@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+function stop_ssh_agent()
+{
+    [ ! -z "$SSH_AGENT_PID" ] && kill $SSH_AGENT_PID
+}
+
+trap stop_ssh_agent EXIT
+trap stop_ssh_agent SIGINT SIGTERM
+
 DEST_DIR=$1
 echo $SRC_DIR 1>&2
 echo $BUILD_ID 1>&2

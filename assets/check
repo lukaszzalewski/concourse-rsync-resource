@@ -2,6 +2,14 @@
 
 set -e -x
 
+function stop_ssh_agent()
+{
+    [ ! -z "$SSH_AGENT_PID" ] && kill $SSH_AGENT_PID
+}
+
+trap stop_ssh_agent EXIT
+trap stop_ssh_agent SIGINT SIGTERM
+
 SCRIPT_INPUT='/tmp/input'
 cat > $SCRIPT_INPUT <&0 # STDIN params
 
