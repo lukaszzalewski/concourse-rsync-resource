@@ -81,7 +81,7 @@ if [ "$skip_download" = "false" ]; then
         eval $RSYNC_CMD  1>&2
 
         if [ $? -eq 0 ]; then
-            TIMESTAMP=$(find $DEST_DIR -type f -exec stat -c "%Y" {} \; | sort -n | tail -1)
+            TIMESTAMP=$(find $DEST_DIR -type f -printf '%T@\n' | cut -d. -f1 | sort -n | tail -1)
             OUTPUT_STRING="{ \"version\": { \"ref\": \"$TIMESTAMP\"} }"
             echo $OUTPUT_STRING
             exit 0
@@ -91,7 +91,7 @@ if [ "$skip_download" = "false" ]; then
         while [ $? -ne 0 -a $i -lt $MAX_RETRIES ]
         do
             if [ $? -eq 0 ]; then
-                TIMESTAMP=$(find $DEST_DIR -type f -exec stat -c "%Y" {} \; | sort -n | tail -1)
+                TIMESTAMP=$(find $DEST_DIR -type f -printf '%T@\n' | cut -d. -f1 | sort -n | tail -1)
                 OUTPUT_STRING="{ \"version\": { \"ref\": \"$TIMESTAMP\"} }"
                 echo $OUTPUT_STRING
                 exit 0

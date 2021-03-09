@@ -37,7 +37,7 @@ jq -re '.source.version_ref' < $SCRIPT_INPUT >/dev/null
 if [ $? -eq 1 ]; then
     # next best thing is timestamp of latest file
     echo "No version ref found in parameters; using latest timestamp" 1>&2
-    VERSION_REF=$(find "$SRC_DIR/$SYNC_DIR" -type f -exec stat -c "%Y" {} \; | sort -n | tail -1)
+    VERSION_REF=$(find "$SRC_DIR/$SYNC_DIR" -type f -printf '%T@\n' | cut -d. -f1 | sort -n | tail -1)
 else
     VERSION_REF=$(jq -re '.source.version_ref // ""' < $SCRIPT_INPUT)
     echo "Found version_ref in params.  Value: ${VERSION_REF}" 1>&2
