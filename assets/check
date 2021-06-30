@@ -1,64 +1,100 @@
-#!/usr/bin/env bash
+#!/usr/bin/env python
 
-set -e -x
+import json
+import os 
+import subprocess
+import sys
+import paramiko
 
-function stop_ssh_agent()
-{
-    [ ! -z "$SSH_AGENT_PID" ] && kill $SSH_AGENT_PID
-}
+DEBUG = True if os.getenv('DEBUG') == 'true' else False
 
-trap stop_ssh_agent EXIT
-trap stop_ssh_agent SIGINT SIGTERM
+if DEBUG:
+    print('===\nCHECK\n===')
 
-SCRIPT_INPUT='/tmp/input'
-cat > $SCRIPT_INPUT <&0 # STDIN params
+def in_(instream):
+    pr_config = json.load(instream)
 
-SERVER=$(jq -r '(.source.servers + [.source.server])[0]' < $SCRIPT_INPUT)
-PORT=$(jq -r '.source.port // ""' < $SCRIPT_INPUT)
-BASE_DIR=$(jq -r '.source.base_dir // ""' < $SCRIPT_INPUT)
-USER=$(jq -r '.source.user // ""' < $SCRIPT_INPUT)
-VERSION=$(jq -r '.version.ref // ""' < $SCRIPT_INPUT)
-jq -re '.source.disable_version_path' < $SCRIPT_INPUT >/dev/null
-DISABLE_VERSION_PATH=$?
+    if not pr_config.get('version', None):
+        pr_config['version'] = dict()
 
-## check if port is set in the configuration and
-## use default SSH port number 22 otherwise
-if [ -z "$PORT" ]; then
-    PORT=22
-fi
+    server = pr_config["source"].get('server')
+    port = pr_config["source"].get('port', 22)
+    private_key = pr_config["source"].get('private_key','')
+    base_dir = pr_config["source"].get('base_dir')
+    sync_dirs = pr_config["source"].get('sync_dirs')
+    user = pr_config["source"].get('user')
+    version = pr_config.get("version", dict())
+    disable_version_path = True if pr_config['source'].get('disable_version_path', 'false') == 'true' else False
 
-echo $SCRIPT_INPUT 1>&2
-echo $SERVER    1>&2
-echo $PORT      1>&2
-echo $BASE_DIR  1>&2
-echo $USER      1>&2
-echo $VERSION  1>&2
+    stdout_targets = []
 
-mkdir -p ~/.ssh
-(jq -r '.source.private_key // empty' < $SCRIPT_INPUT) > ~/.ssh/server_key
-echo -e "Host $SERVER\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
-chmod -R 600 ~/.ssh
+    if len(version) > 0:
+        stdout_targets.append(version)
 
-eval $(ssh-agent)  1>&2  >/dev/null
-SSH_ASKPASS=/opt/resource/askpass.sh DISPLAY= ssh-add ~/.ssh/server_key  1>&2  >/dev/null
+    if DEBUG:
+        print('server', server)
+        print('port', port)
+        print('private_key', private_key)
+        print('base_dir', base_dir)
+        print('sync_dirs', sync_dirs)
+        print('user', user)
+        print('version', version)
+        print('disable_version_path', disable_version_path)
 
-if [ "$DISABLE_VERSION_PATH" -eq "0" ]
-then
-    # any version is already rolled in
-    SRC_DIR=$BASE_DIR
-else
-    SRC_DIR=$BASE_DIR/$VERSION
-fi
+    home_user = os.path.expanduser('~')
 
-DIR=${SRC_DIR##*/}
-echo $DIR 1>&2
-REFS=$(ssh -i ~/.ssh/server_key -p $PORT $USER@$SERVER "find $SRC_DIR -type f -printf '%T@\n' | cut -d. -f1 | sort -n | tail -1")
-if [ "$?" -eq "0" ]
-then
-    REFS="[{ \"ref\": \"$REFS\" }]"
-    echo $REFS
-else
-    exit 1
-fi
+    server_key = os.path.join(home_user, '.ssh/server_key')
+    ssh_config = os.path.join(home_user, '.ssh/config')
+    ssh_folder = os.path.join(home_user, '.ssh')
+    os.makedirs(ssh_folder, exist_ok=True)
 
-exit 0
+    cmd = 'echo \'%s\' > %s' % (private_key.replace('\\n', '\n'), server_key)
+    ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    output = ps.communicate()[0]
+
+    cmd = 'echo \'Host $SERVER\n\tStrictHostKeyChecking no\n\' > %s' % (ssh_config)
+    ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    output = ps.communicate()[0]
+
+    os.chmod(server_key,  int('600', base=8))
+    os.chmod(ssh_config,  int('600', base=8))
+
+    k = paramiko.RSAKey.from_private_key_file(server_key)
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(hostname=server, username=user, pkey=k, port=port)
+
+    find_cmd = "find " + base_dir + " -maxdepth 1 -mindepth 1 -type d -printf '%T@ %p\n' | sort -n "
+    ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(find_cmd)
+    refs = ssh_stdout.read().decode('utf-8').split('\n')
+
+    if len(refs) == 1: 
+        ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command("mkdir -p " + os.path.join(base_dir, '000000001'))
+        ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(find_cmd)
+        refs = ssh_stdout.read().decode('utf-8').split('\n')
+
+    recent_file = refs[len(refs) - 2]
+    recent_file_parts = recent_file.split(' ')[1].split('/')
+    recent_timestamp = recent_file_parts[len(recent_file_parts) - 1]
+
+    if len(version) == 0:
+        stdout_targets.append({ "ref": str(recent_timestamp) })
+    elif len(version) > 0:
+        if version['ref'] != str(recent_timestamp):
+            stdout_targets.append({ "ref": str(recent_timestamp) })
+
+    if DEBUG:
+        print(refs, ssh_stderr.read())
+        print('Recent File:      ', recent_file)
+        print('Recent File Parts:', recent_file_parts)
+        print('Recent Timestamp: ', recent_timestamp)
+        print('stdout targets:', stdout_targets)
+
+
+    return stdout_targets
+
+def main():
+    print(json.dumps(in_(sys.stdin)))
+
+if __name__ == '__main__':
+    main()

@@ -1,7 +1,6 @@
-FROM alpine:latest
-MAINTAINER Steve Williams <mrsixw@gmail.com>
+FROM python:3-slim-buster
 
-RUN apk update && apk upgrade && \
-    apk add --update  bash rsync jq openssh
+RUN apt-get update && apt install -y bash rsync openssh-server
+RUN pip install paramiko
 
 COPY ./assets/* /opt/resource/

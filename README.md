@@ -8,19 +8,8 @@
 * `sync_dirs`: *Required* The directories that should be synced between concourse and the remote server
 * `user`: *Required* User credential for login using ssh
 * `private_key`: *Required* Key for the specified user
-* `disable_version_path`: default is `false`. In this case `out` will put content in a directory named by the newest file's timestamp. In both cases a `latest` folder will be maintained. For example:
-```
-base_dir
-|-latest
-  |-sync_dir_1
-  |-sync_dir_2
-|-1623879028
-  |-sync_dir_1
-  |-sync_dir_2
-``` 
-
 ### Initial State
-If nothing exists a latest directory will be created and used as the initial resource version
+If nothing exists a `00000000` directory will be created and used as the initial resource version
 
 ## Behaviors
 

@@ -1,131 +1,113 @@
-#!/usr/bin/env bash
+#!/usr/bin/env python
 
-function stop_ssh_agent()
-{
-    [ ! -z "$SSH_AGENT_PID" ] && kill $SSH_AGENT_PID
-}
+import json
+import os 
+import subprocess
+import sys
+import paramiko
 
-trap stop_ssh_agent EXIT
-trap stop_ssh_agent SIGINT SIGTERM
+DEBUG = True if os.getenv('DEBUG') == 'true' else False
 
-DEST_DIR=$1
-echo $SRC_DIR 1>&2
-echo $BUILD_ID 1>&2
-echo $BUILD_NAME 1>&2
-echo $BUILD_JOB_NAME 1>&2
-echo $BUILD_PIPELINE_NAME 1>&2
-echo $ATC_EXTERNAL_URL 1>&2
+if DEBUG:
+    print('===\nIN\n===')
 
-PLATFORM=`uname`
+def in_(instream):
+    pr_config = json.load(instream)
 
-MAX_RETRIES=10
-SLEEP_TIME=10
+    if not pr_config.get('version', None):
+        pr_config['version'] = dict()
 
-SCRIPT_INPUT='/tmp/input'
-cat > $SCRIPT_INPUT <&0 # STDIN params
+    sys_dir = sys.argv[1]
+    server = pr_config["source"].get('server')
+    port = pr_config["source"].get('port', 22)
+    private_key = pr_config["source"].get('private_key','')
+    base_dir = pr_config["source"].get('base_dir')
+    version = pr_config.get("version").get("ref")
+    user = pr_config["source"].get('user')
+    sync_dirs = [ u'%s@%s:%s' % (user, server, os.path.join(base_dir, version, x)) for x in pr_config["source"].get('sync_dirs')]
+    synced_dirs = [ os.path.join(sys_dir, x) for x in pr_config["source"].get('sync_dirs')]
+    params = pr_config.get("params", {}).get('rsync_opts','')
+    disable_version_path = True if pr_config['source'].get('disable_version_path', 'false') == 'true' else False
 
-SERVER=$(jq -r '(.source.servers + [.source.server])[0]' < $SCRIPT_INPUT)
-PORT=$(jq -r '.source.port // ""' < $SCRIPT_INPUT)
-BASE_DIR=$(jq -r '.source.base_dir // ""' < $SCRIPT_INPUT)
-USER=$(jq -r '.source.user // ""' < $SCRIPT_INPUT)
-VERSION=$(jq -r '.version.ref // ""' < $SCRIPT_INPUT)
-RSYNC_OPTS_ARR=$(jq -r '.params.rsync_opts // ""' < $SCRIPT_INPUT)
+    stdout = {}
 
-jq -re '.source.disable_version_path' < $SCRIPT_INPUT >/dev/null
-# a little tricky: 0 is the status code that says that we found the entry.  It's inverted logic.
-DISABLE_VERSION_PATH=$?
+    if DEBUG:
+        print('server', server)
+        print('port', port)
+        print('private_key', private_key)
+        print('base_dir', base_dir)
+        print('sync_dirs', sync_dirs)
+        print('synced_dirs', synced_dirs)
+        print('user', user)
+        print('version', version)
+        print('disable_version_path', disable_version_path)
 
-# imitating docker resource: provide a way to do a one-way sync.
-#    This should really only be used when the output will not be consumed as a
-#    resource later in a given job.
-skip_download="$(jq -r '.params.skip_download // false' < $SCRIPT_INPUT)"
+    home_user = os.path.expanduser('~')
 
-if [ "$skip_download" = "false" ]; then
-    ## check if port is set in the configuration and
-    ## use default SSH port number 22 otherwise
-    if [ -z "$PORT" ]; then
-        PORT=22
-    fi
+    server_key = os.path.join(home_user, '.ssh/server_key')
+    ssh_config = os.path.join(home_user, '.ssh/config')
+    ssh_folder = os.path.join(home_user, '.ssh')
+    os.makedirs(ssh_folder, exist_ok=True)
 
-    if [ -z "$RSYNC_OPTS_ARR" ]
-    then
-        RSYNC_OPTS="-Pav"
-    else
-        RSYNC_OPTS=$(jq -r 'join(" ")' <<< $RSYNC_OPTS_ARR)
-    fi
+    cmd = 'echo \'%s\' > %s' % (private_key.replace('\\n', '\n'), server_key)
+    ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    output = ps.communicate()[0]
 
-    echo $SCRIPT_INPUT 1>&2
-    echo $SERVER    1>&2
-    echo $PORT      1>&2
-    echo $BASE_DIR  1>&2
-    echo $USER      1>&2
-    echo $VERSION   1>&2
+    cmd = 'echo \'Host $SERVER\n\tStrictHostKeyChecking no\n\' > %s' % (ssh_config)
+    ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    output = ps.communicate()[0]
 
-    mkdir -p ~/.ssh
-    (jq -r '.source.private_key // empty' < $SCRIPT_INPUT) > ~/.ssh/server_key
-    echo -e "Host $SERVER\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
-    chmod -R 600 ~/.ssh
+    os.chmod(server_key,  int('600', base=8))
+    os.chmod(ssh_config,  int('600', base=8))
 
-    eval $(ssh-agent) 1>&2 >/dev/null
-    SSH_ASKPASS=/opt/resource/askpass.sh DISPLAY= ssh-add ~/.ssh/server_key 1>&2 >/dev/null
+    k = paramiko.RSAKey.from_private_key_file(server_key)
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(hostname=server, username=user, pkey=k, port=port)
 
-    if [ "$DISABLE_VERSION_PATH" -eq "0" ]
-    then
-        # any version is already rolled in
-        SRC_DIR=$BASE_DIR
-    else
-        SRC_DIR=$BASE_DIR/$VERSION
-    fi
+    valid_dirs = []
+    for dir in synced_dirs:
+        if 'No such file or directory'.lower() in dir.lower():
+            valid_dirs.append(dir)
 
-    echo $SRC_DIR 1>&2
+    cmd = u"rsync -avPt %s -e 'ssh -i ~/.ssh/server_key -o StrictHostKeyChecking=no -p %s' %s %s" % (params, port, " ".join(sync_dirs), sys_dir)
+    ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    output = ps.communicate()[0]
+    if DEBUG:
+        print('Cmd:              ', cmd)
 
-    if [[ -z "$VERSION" && "$DISABLE_VERSION_PATH" -eq "1" ]]; then
-    echo "ERROR Version specification $VERSION invalid!" 1>&2
-    exit 1
-    else
-    if (ssh -t -i ~/.ssh/server_key -p $PORT $USER@$SERVER '[ -d $SRC_DIR ]' ); then
-        RSYNC_CMD="rsync $RSYNC_OPTS -e 'ssh -i ~/.ssh/server_key -p $PORT' $USER@$SERVER:$SRC_DIR/* $DEST_DIR"
-        echo $RSYNC_CMD  1>&2
-        eval $RSYNC_CMD  1>&2
 
-        if [ $? -eq 0 ]; then
-            TIMESTAMP=$(find $DEST_DIR -type f -printf '%T@\n' | cut -d. -f1 | sort -n | tail -1)
-            OUTPUT_STRING="{ \"version\": { \"ref\": \"$TIMESTAMP\"} }"
-            echo $OUTPUT_STRING
-            exit 0
-        fi
+    if len(valid_dirs) > 0:
+        cmd = "find " + " ".join(valid_dirs) + " -printf '%T@ %p\n' | sort -n "
+        ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+        output = ps.communicate()[0].decode('utf-8').split('\n')
+        output_len = len(output)
+        recent_file = output[output_len - 2]
+        recent_timestamp = recent_file.split(' ')[0].split('.')[0]
+        if DEBUG:
+            print('Cmd:              ', cmd)
+            print('Sync Dirs:        ', valid_dirs)
+            print('Recent Files:     ', output_len, '\n', output)
+            print('Recent File:      ', recent_file)
+    else:
+        recent_timestamp = version
+        output = []
+        if DEBUG:
+            print('NOTE:           : No local valid dirs found')
+            print('Recent Timestamp: ', recent_timestamp)
 
-        i=0
-        while [ $? -ne 0 -a $i -lt $MAX_RETRIES ]
-        do
-            if [ $? -eq 0 ]; then
-                TIMESTAMP=$(find $DEST_DIR -type f -printf '%T@\n' | cut -d. -f1 | sort -n | tail -1)
-                OUTPUT_STRING="{ \"version\": { \"ref\": \"$TIMESTAMP\"} }"
-                echo $OUTPUT_STRING
-                exit 0
-            else
-                echo "Command failed - retrying in $SLEEP_TIME..."
-                sleep $SLEEP_TIME
-                i=$(($i+1))
-                eval $COMMAND
+    stdout['version'] = {}
+    stdout['version']['ref'] = str(recent_timestamp)
+    stdout['metadata'] = []
+    stdout['metadata'].append({'name' : 'Num Files', 'value': str(len(output)) })
 
-                echo $RSYNC_CMD  1>&2
-                eval $RSYNC_CMD  1>&2
-            fi
+    remote_sync_dir = os.path.join(base_dir, recent_timestamp)
+    stdout['metadata'].append({'name' : 'Remote Sync Dir', 'value': remote_sync_dir})
 
-        done
+    return stdout
 
-        if [ $i -eq $MAX_RETRIES ]
-        then
-            echo "Max retries reached"
-            exit 1
-        fi
-    else
-        echo "Version $VERSION no longer available in $BASE_DIR" 1>&2
-        exit 1
-    fi
-    fi
-else
-    # skipped get due to skip_download=True
-    echo "{ \"version\": { \"ref\": \"\" } }"
-fi
+def main():
+    print(json.dumps(in_(sys.stdin)))
+
+if __name__ == '__main__':
+    main()
