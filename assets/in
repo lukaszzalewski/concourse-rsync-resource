@@ -70,7 +70,7 @@ def in_(instream):
         if 'No such file or directory'.lower() in dir.lower():
             valid_dirs.append(dir)
 
-    cmd = "rsync -avPt %s -e 'ssh -i ~/.ssh/server_key -o StrictHostKeyChecking=no -o LogLevel=ERROR -p %s' %s %s" % (params, port, " ".join(sync_dirs), sys_dir)
+    cmd = "rsync -avPt %s -e 'ssh -i ~/.ssh/server_key -o StrictHostKeyChecking=no -o LogLevel=ERROR -p %s' %s %s" % (" ".join(params), port, " ".join(sync_dirs), sys_dir)
     ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output, error = ps.communicate()
     if len(error) > 0:
