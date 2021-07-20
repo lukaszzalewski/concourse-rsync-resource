@@ -99,7 +99,7 @@ def in_(instream):
         print(ssh_stdout.read())
         print(ssh_stderr.read())
 
-    cmd = u"rsync -avPt %s -e 'ssh -i ~/.ssh/server_key -o StrictHostKeyChecking=no -p %s' %s %s@%s:%s" % (params, port, " ".join(sync_dirs), user, server, remote_sync_dir)
+    cmd = u"rsync -avPt %s -e 'ssh -i ~/.ssh/server_key -o StrictHostKeyChecking=no -p %s' %s %s@%s:%s" % (" ".join(params), port, " ".join(sync_dirs), user, server, remote_sync_dir)
     ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
     output = ps.communicate()[0]
     if DEBUG:

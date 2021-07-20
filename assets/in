@@ -24,7 +24,7 @@ def in_(instream):
     base_dir = pr_config["source"].get('base_dir')
     version = pr_config.get("version").get("ref")
     user = pr_config["source"].get('user')
-    sync_dirs = [ u'%s@%s:%s' % (user, server, os.path.join(str(base_dir), version, str(x))) for x in pr_config["source"].get('sync_dirs')]
+    sync_dirs = [ '%s@%s:%s' % (user, server, os.path.join(str(base_dir), version, str(x))) for x in pr_config["source"].get('sync_dirs')]
     synced_dirs = [ os.path.join(str(sys_dir), str(x)) for x in pr_config["source"].get('sync_dirs')]
     params = pr_config.get("params", {}).get('rsync_opts','')
     disable_version_path = True if pr_config['source'].get('disable_version_path', 'false') == 'true' else False
