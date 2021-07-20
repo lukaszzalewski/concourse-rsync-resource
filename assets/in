@@ -6,7 +6,7 @@ import subprocess
 import sys
 import paramiko
 
-DEBUG = True if os.getenv('DEBUG') == 'true' else False
+DEBUG = False
 
 if DEBUG:
     print('===\nIN\n===')
@@ -24,8 +24,8 @@ def in_(instream):
     base_dir = pr_config["source"].get('base_dir')
     version = pr_config.get("version").get("ref")
     user = pr_config["source"].get('user')
-    sync_dirs = [ u'%s@%s:%s' % (user, server, os.path.join(base_dir, version, x)) for x in pr_config["source"].get('sync_dirs')]
-    synced_dirs = [ os.path.join(sys_dir, x) for x in pr_config["source"].get('sync_dirs')]
+    sync_dirs = [ u'%s@%s:%s' % (user, server, os.path.join(str(base_dir), version, str(x))) for x in pr_config["source"].get('sync_dirs')]
+    synced_dirs = [ os.path.join(str(sys_dir), str(x)) for x in pr_config["source"].get('sync_dirs')]
     params = pr_config.get("params", {}).get('rsync_opts','')
     disable_version_path = True if pr_config['source'].get('disable_version_path', 'false') == 'true' else False
 
@@ -50,12 +50,12 @@ def in_(instream):
     os.makedirs(ssh_folder, exist_ok=True)
 
     cmd = 'echo \'%s\' > %s' % (private_key.replace('\\n', '\n'), server_key)
-    ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-    output = ps.communicate()[0]
+    ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    output, error = ps.communicate()
 
     cmd = 'echo \'Host $SERVER\n\tStrictHostKeyChecking no\n\' > %s' % (ssh_config)
-    ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-    output = ps.communicate()[0]
+    ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    output, error = ps.communicate()
 
     os.chmod(server_key,  int('600', base=8))
     os.chmod(ssh_config,  int('600', base=8))
@@ -70,9 +70,12 @@ def in_(instream):
         if 'No such file or directory'.lower() in dir.lower():
             valid_dirs.append(dir)
 
-    cmd = u"rsync -avPt %s -e 'ssh -i ~/.ssh/server_key -o StrictHostKeyChecking=no -p %s' %s %s" % (params, port, " ".join(sync_dirs), sys_dir)
-    ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-    output = ps.communicate()[0]
+    cmd = u"rsync -avPt %s -e 'ssh -i ~/.ssh/server_key -o StrictHostKeyChecking=no -o LogLevel=ERROR -p %s' %s %s" % (params, port, " ".join(sync_dirs), sys_dir)
+    ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    output, error = ps.communicate()
+    if len(error) > 0:
+        print(output)
+        print(error)
     if DEBUG:
         print('Cmd:              ', cmd)
 
@@ -80,6 +83,10 @@ def in_(instream):
     if len(valid_dirs) > 0:
         cmd = "find " + " ".join(valid_dirs) + " -printf '%T@ %p\n' | sort -n "
         ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+        if len(error) > 0:
+            print(output)
+            print(error)
+
         output = ps.communicate()[0].decode('utf-8').split('\n')
         output_len = len(output)
         recent_file = output[output_len - 2]

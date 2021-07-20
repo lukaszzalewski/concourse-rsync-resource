@@ -22,7 +22,7 @@ def in_(instream):
     port = pr_config["source"].get('port', 22)
     private_key = pr_config["source"].get('private_key','')
     base_dir = pr_config["source"].get('base_dir')
-    sync_dirs = [ os.path.join(sys_dir, x) for x in pr_config["source"].get('sync_dirs')]
+    sync_dirs = [ os.path.join(str(sys_dir), str(x)) for x in pr_config["source"].get('sync_dirs')]
     user = pr_config["source"].get('user')
     version = pr_config.get("version", dict())
     params = pr_config.get("params", {}).get('rsync_opts','')
