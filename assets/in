@@ -74,6 +74,7 @@ def in_(instream):
     ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output, error = ps.communicate()
     if len(error) > 0:
+        print(cmd)
         print(output)
         print(error)
     if DEBUG:
