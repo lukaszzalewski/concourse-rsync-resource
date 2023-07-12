@@ -59,17 +59,17 @@ def in_(instream):
     os.chmod(server_key,  int('600', base=8))
     os.chmod(ssh_config,  int('600', base=8))
 
-    k = paramiko.RSAKey.from_private_key_file(server_key)
+    k = paramiko.Ed25519Key.from_private_key_file(server_key)
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(hostname=server, username=user, pkey=k, port=port)
 
-    find_cmd = "find " + base_dir + " -maxdepth 1 -mindepth 1 -type d -printf '%T@ %p\n' | sort -n "
+    find_cmd = "find " + base_dir + " -maxdepth 1 -mindepth 1 -type d -exec stat {} -c '%Y %n' \; | sort -n | tail"
     ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(find_cmd)
     refs = ssh_stdout.read().decode('utf-8').split('\n')
 
-    if len(refs) == 1: 
-        ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command("mkdir -p " + os.path.join(base_dir, '000000001'))
+    if len(refs) == 0:
+        ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command("mkdir -p " + os.path.join(base_dir, '0000000001'))
         ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(find_cmd)
         refs = ssh_stdout.read().decode('utf-8').split('\n')
 

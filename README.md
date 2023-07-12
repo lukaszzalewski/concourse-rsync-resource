@@ -9,7 +9,7 @@
 * `user`: *Required* User credential for login using ssh
 * `private_key`: *Required* Key for the specified user
 ### Initial State
-If nothing exists a `00000000` directory will be created and used as the initial resource version
+If nothing exists a `000000001` directory will be created and used as the initial resource version
 
 ## Behaviors
 

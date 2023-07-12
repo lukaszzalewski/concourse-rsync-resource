@@ -58,7 +58,7 @@ def in_(instream):
     os.chmod(server_key,  int('600', base=8))
     os.chmod(ssh_config,  int('600', base=8))
 
-    k = paramiko.RSAKey.from_private_key_file(server_key)
+    k = paramiko.Ed25519Key.from_private_key_file(server_key)
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(hostname=server, username=user, pkey=k, port=port)
